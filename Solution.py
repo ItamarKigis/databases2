@@ -25,26 +25,25 @@ def create_tables() -> None:
                      "phone TEXT NOT NULL,"
                      "CHECK(age >= 18) ,"
                      "CHECK(age <= 120),"
-                     "CHECK(LENGTH(phone) == 10),"
+                     "CHECK(LENGTH(phone) = 10),"
                      "CHECK(cust_id > 0))")
 
         conn.execute("CREATE TABLE Orders("
                      "order_id INTEGER PRIMARY KEY NOT NULL,"
-                     "date TIMESTAMP NOT NULL, "
+                     "date TIMESTAMP(0) NOT NULL, "
                      "delivery_fee DECIMAL NOT NULL,"
                      "delivery_address TEXT NOT NULL,"
                      "tip DECIMAL NOT NULL,"
                      "CHECK(delivery_fee >= 0) ,"
                      "CHECK(LENGTH(delivery_address) >= 5),"
                      "CHECK(tip >= 0),"
-                     "CHECK(order_id > 0),"
-                     "CHECK(date LIKE '____-__-__ __:__:__'))")
+                     "CHECK(order_id > 0))")
 
         conn.execute("CREATE TABLE Dish("
                      "dish_id INTEGER PRIMARY KEY NOT NULL,"
                      "name TEXT NOT NULL, "
                      "price DECIMAL NOT NULL,"
-                     "is_active  NOT NULL,"
+                     "is_active DECIMAL NOT NULL," #YUVAL WILL FIX LATER
                      "CHECK(LENGTH(name) >= 4),"
                      "CHECK(price > 0),"
                      "CHECK(dish_id > 0))")
@@ -52,7 +51,7 @@ def create_tables() -> None:
         conn.execute("CREATE TABLE Ordered("
                      "order_id INTEGER,"
                      "cust_id INTEGER, "
-                     "FOREIGN KEY (order_id) REFERENCES Customers(order_id),"
+                     "FOREIGN KEY (order_id) REFERENCES Orders(order_id),"
                      "FOREIGN KEY (cust_id) REFERENCES Customers(cust_id),"
                      "PRIMARY KEY(order_id, cust_id))")
 
@@ -61,8 +60,8 @@ def create_tables() -> None:
                      "dish_id INTEGER, "
                      "amount INTEGER NOT NULL, "
                      "price_upon_order INTEGER NOT NULL, "
-                     "FOREIGN KEY (order_id) REFERENCES Customers(order_id),"
-                     "FOREIGN KEY (dish_id) REFERENCES Customers(dish_id),"
+                     "FOREIGN KEY (order_id) REFERENCES Orders(order_id),"
+                     "FOREIGN KEY (dish_id) REFERENCES Dish(dish_id),"
                      "PRIMARY KEY(order_id, dish_id),"
                      "CHECK(amount >= 0),"
                      "CHECK(price_upon_order > 0))")
@@ -72,7 +71,7 @@ def create_tables() -> None:
                      "dish_id INTEGER, "
                      "rating INTEGER NOT NULL, "
                      "FOREIGN KEY (cust_id) REFERENCES Customers(cust_id),"
-                     "FOREIGN KEY (dish_id) REFERENCES Customers(dish_id),"
+                     "FOREIGN KEY (dish_id) REFERENCES Dish(dish_id),"
                      "PRIMARY KEY(cust_id, dish_id),"
                      "CHECK(rating >= 1),"
                      "CHECK(rating <= 5))")
@@ -133,13 +132,57 @@ def drop_tables() -> None:
 # CRUD API
 
 def add_customer(customer: Customer) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("INSERT INTO Customers (cust_id, name, age, phone) "
+                 "VALUES ({_id},{_name},{_age},{_phone})")
+                 .format(_id=sql.Literal(customer.get_cust_id()),
+                         _name=sql.Literal(customer.get_full_name()),
+                         _age=sql.Literal(customer.get_age()),
+                         _phone=sql.Literal(customer.get_phone())))
+        conn.execute(query)
+        return ReturnValue.OK
 
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.CHECK_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.UNIQUE_VIOLATION:
+        return ReturnValue.ALREADY_EXISTS
+    except Exception as e:
+        return ReturnValue.ERROR
+
+    finally:
+        if conn:
+            conn.close()
 
 def get_customer(customer_id: int) -> Customer:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("SELECT cust_id, name, age, phone "
+                        "FROM Customers WHERE cust_id = {_id};")
+                 .format(_id=sql.Literal(customer_id)))
+        res = conn.execute(query)
+
+        if res is not None and len(res) > 0:
+            res = res[1]
+            ret_val = Customer()
+            ret_val.set_cust_id(res["cust_id"][0])
+            ret_val.set_full_name(res["name"][0])
+            ret_val.set_age(res["age"][0])
+            ret_val.set_phone(res["phone"][0])
+
+            return ret_val
+        else:
+            return BadCustomer()
+    except Exception as e:
+        print(e)
+        return BadCustomer()
+    finally:
+        if conn:
+            conn.close()
 
 
 def delete_customer(customer_id: int) -> ReturnValue:
@@ -266,3 +309,12 @@ def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
 def get_potential_dish_recommendations(cust_id: int) -> List[int]:
     # TODO: implement
     pass
+
+
+if __name__ == '__main__':
+    print(create_tables())
+    cust = Customer(cust_id=2, full_name="itamar129", age=21, phone="05843706025")
+    add_customer(cust)
+    print(get_customer(2))
+    clear_tables()
+    drop_tables()
