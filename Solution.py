@@ -245,8 +245,31 @@ def add_dish(dish: Dish) -> ReturnValue:
 
 
 def get_dish(dish_id: int) -> Dish:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("SELECT dish_id, name, price, is_active "
+                        "FROM Dish WHERE dish_id = {_id};")
+                 .format(_id=sql.Literal(dish_id)))
+        res = conn.execute(query)
+
+        if res is not None and len(res) > 0:
+            res = res[1]
+            ret_val = Dish()
+            ret_val.set_dish_id(res["dish_id"][0])
+            ret_val.set_name(res["name"][0])
+            ret_val.set_price(res["price"][0])
+            ret_val.set_is_active(res["is_active"][0])
+
+            return ret_val
+        else:
+            return BadDish()
+    except Exception as e:
+        print(e)
+        return BadDish()
+    finally:
+        if conn:
+            conn.close()
 
 
 def update_dish_price(dish_id: int, price: float) -> ReturnValue:
@@ -346,10 +369,11 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
 
 
 if __name__ == '__main__':
-    print(create_tables())
+    create_tables()
 
     dish = Dish(10,"itamar",50, 1)
+    dish = Dish(20,"itamar",50, 1)
     add_dish(dish)
-
+    print(get_dish(20))
     clear_tables()
     drop_tables()
