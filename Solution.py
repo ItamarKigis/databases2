@@ -190,13 +190,16 @@ def delete_customer(customer_id: int) -> ReturnValue:
     rows_effected = 0
     try:
         conn = Connector.DBConnector()
-        query = sql.SQL("DELETE FROM  WHERE id={0}").format(sql.Literal(ID))
+        query = (sql.SQL("DELETE FROM Customers WHERE cust_id={0}")
+                 .format(sql.Literal(customer_id)))
         rows_effected, _ = conn.execute(query)
+
         if rows_effected == 0:
             return ReturnValue.NOT_EXISTS
         return ReturnValue.OK
     except DatabaseException as e:
         return ReturnValue.ERROR
+
 
 
 def add_order(order: Order) -> ReturnValue:
@@ -268,13 +271,58 @@ def delete_order(order_id: int) -> ReturnValue:
 
 
 def add_dish(dish: Dish) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("INSERT INTO Dish (dish_id, name, price, is_active) "
+                 "VALUES ({_id},{_name},{_price},{_is_active})")
+                 .format(_id=sql.Literal(dish.get_dish_id()),
+                         _name=sql.Literal(dish.get_name()),
+                         _price=sql.Literal(dish.get_price()),
+                         _is_active=sql.Literal(dish.get_is_active())))
+        conn.execute(query)
+        return ReturnValue.OK
+
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.CHECK_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.UNIQUE_VIOLATION:
+        return ReturnValue.ALREADY_EXISTS
+    except Exception as e:
+        return ReturnValue.ERROR
+
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_dish(dish_id: int) -> Dish:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("SELECT dish_id, name, price, is_active "
+                        "FROM Dish WHERE dish_id = {_id};")
+                 .format(_id=sql.Literal(dish_id)))
+        res = conn.execute(query)
+
+        if res is not None and len(res) > 0:
+            res = res[1]
+            ret_val = Dish()
+            ret_val.set_dish_id(res["dish_id"][0])
+            ret_val.set_name(res["name"][0])
+            ret_val.set_price(res["price"][0])
+            ret_val.set_is_active(res["is_active"][0])
+
+            return ret_val
+        else:
+            return BadDish()
+    except Exception as e:
+        print(e)
+        return BadDish()
+    finally:
+        if conn:
+            conn.close()
 
 
 def update_dish_price(dish_id: int, price: float) -> ReturnValue:
@@ -374,9 +422,11 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
 
 
 if __name__ == '__main__':
-    print(create_tables())
-    cust = Customer(cust_id=2, full_name="itamar129", age=21, phone="05843706025")
-    add_customer(cust)
-    print(get_customer(2))
+    create_tables()
+
+    dish = Dish(10,"itamar",50, 1)
+    dish = Dish(20,"itamar",50, 1)
+    add_dish(dish)
+    print(get_dish(20))
     clear_tables()
     drop_tables()
