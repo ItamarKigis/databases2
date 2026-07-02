@@ -43,7 +43,7 @@ def create_tables() -> None:
                      "dish_id INTEGER PRIMARY KEY NOT NULL,"
                      "name TEXT NOT NULL, "
                      "price DECIMAL NOT NULL,"
-                     "is_active DECIMAL NOT NULL," #YUVAL WILL FIX LATER
+                     "is_active BOOLEAN NOT NULL," #YUVAL WILL FIX LATER
                      "CHECK(LENGTH(name) >= 4),"
                      "CHECK(price > 0),"
                      "CHECK(dish_id > 0))")
@@ -273,8 +273,24 @@ def get_dish(dish_id: int) -> Dish:
 
 
 def update_dish_price(dish_id: int, price: float) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("UPDATE Dish"
+                        " SET price = {_price} WHERE dish_id = {_dish_id} "
+                         "AND is_active = True;")
+                 .format(_price=sql.Literal(price),
+                         _dish_id = sql.Literal(dish_id)))
+        rows_effected, _ = conn.execute(query)
+        if rows_effected == 0:
+            return ReturnValue.NOT_EXISTS
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.CHECK_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    finally:
+        if conn:
+            conn.close()
 
 
 def update_dish_active_status(dish_id: int, is_active: bool) -> ReturnValue:
@@ -371,9 +387,10 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
 if __name__ == '__main__':
     create_tables()
 
-    dish = Dish(10,"itamar",50, 1)
-    dish = Dish(20,"itamar",50, 1)
+    dish = Dish(20,"itamar",50, True)
     add_dish(dish)
+    print(get_dish(20))
+    print(update_dish_price(20,  70))
     print(get_dish(20))
     clear_tables()
     drop_tables()
