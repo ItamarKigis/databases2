@@ -252,6 +252,11 @@ def get_order(order_id: int) -> Order:
             return ret_val
         else:
             return BadOrder()
+    except Exception as e:
+        return BadOrder()
+    finally:
+        if conn:
+            conn.close()
 
 
 def delete_order(order_id: int) -> ReturnValue:
