@@ -203,18 +203,76 @@ def delete_customer(customer_id: int) -> ReturnValue:
 
 
 def add_order(order: Order) -> ReturnValue:
-    # TODO: implement
-    pass
+    # implement
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        # add an order to the database
+        query = (sql.SQL("INSERT INTO Orders (order_id, date, delivery_fee, delivery_address, tip) "
+                 "VALUES ({_id},{_date},{_delivery_fee},{_delivery_address},{_tip})")
+                 .format(_id=sql.Literal(order.get_order_id()),
+                         _date=sql.Literal(order.get_date()),
+                         _delivery_fee=sql.Literal(order.get_delivery_fee()),
+                         _delivery_address=sql.Literal(order.get_delivery_address()),
+                         _tip=sql.Literal(order.get_tip())))
+        conn.execute(query)
+        return ReturnValue.OK
+
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.CHECK_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.UNIQUE_VIOLATION:
+        return ReturnValue.ALREADY_EXISTS
+    except Exception as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_order(order_id: int) -> Order:
-    # TODO: implement
-    pass
+    cone = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("SELECT order_id, date, delivery_fee, delivery_address, tip "
+                        "FROM Orders WHERE order_id = {_id};")
+                 .format(_id=sql.Literal(order_id)))
+        res = conn.execute(query)
+
+        if res is not None and len(res) > 0:
+            res = res[1]
+            ret_val = Order()
+            ret_val.set_order_id(res["order_id"][0])
+            ret_val.set_date(res["date"][0])
+            ret_val.set_delivery_fee(res["delivery_fee"][0])
+            ret_val.set_delivery_address(res["delivery_address"][0])
+            ret_val.set_tip(res["tip"][0])
+
+            return ret_val
+        else:
+            return BadOrder()
+    except Exception as e:
+        return BadOrder()
+    finally:
+        if conn:
+            conn.close()
 
 
 def delete_order(order_id: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    rows_effected = 0
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL("DELETE FROM Orders WHERE order_id = {_id}").format(_id=sql.Literal(order_id))
+        rows_effected, _ = conn.execute(query)
+        return ReturnValue.OK
+    except Exception as e:
+        print(e)
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
 
 
 def add_dish(dish: Dish) -> ReturnValue:
