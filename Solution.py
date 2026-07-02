@@ -363,7 +363,8 @@ def customer_placed_order(customer_id: int, order_id: int) -> ReturnValue:
 
 def get_customer_that_placed_order(order_id: int) -> Customer:
     # TODO: implement
-    pass
+    pass:
+
 
 
 def order_contains_dish(order_id: int, dish_id: int, amount: int) -> ReturnValue:
