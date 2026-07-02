@@ -190,10 +190,15 @@ def delete_customer(customer_id: int) -> ReturnValue:
     rows_effected = 0
     try:
         conn = Connector.DBConnector()
-        query = sql.SQL("DELETE FROM  WHERE id={0}").format(sql.Literal(ID))
+        query = (sql.SQL("DELETE FROM Customers WHERE cust_id={0}")
+                 .format(sql.Literal(customer_id)))
         rows_effected, _ = conn.execute(query)
-    except DatabaseException.ConnectionInvalid as e:
-        print(e)
+
+        if rows_effected == 0:
+            return ReturnValue.NOT_EXISTS
+        return ReturnValue.OK
+    except DatabaseException as e:
+        return ReturnValue.ERROR
 
 
 
@@ -320,8 +325,9 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
 
 if __name__ == '__main__':
     print(create_tables())
-    cust = Customer(cust_id=2, full_name="itamar129", age=21, phone="05843706025")
+    cust = Customer(cust_id=2, full_name="itamar129", age=21, phone="0584706025")
     add_customer(cust)
-    print(get_customer(2))
+
+    delete_customer(-1)
     clear_tables()
     drop_tables()
