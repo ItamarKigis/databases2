@@ -218,8 +218,30 @@ def delete_order(order_id: int) -> ReturnValue:
 
 
 def add_dish(dish: Dish) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("INSERT INTO Dish (dish_id, name, price, is_active) "
+                 "VALUES ({_id},{_name},{_price},{_is_active})")
+                 .format(_id=sql.Literal(dish.get_dish_id()),
+                         _name=sql.Literal(dish.get_name()),
+                         _price=sql.Literal(dish.get_price()),
+                         _is_active=sql.Literal(dish.get_is_active())))
+        conn.execute(query)
+        return ReturnValue.OK
+
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.CHECK_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.UNIQUE_VIOLATION:
+        return ReturnValue.ALREADY_EXISTS
+    except Exception as e:
+        return ReturnValue.ERROR
+
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_dish(dish_id: int) -> Dish:
@@ -325,9 +347,9 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
 
 if __name__ == '__main__':
     print(create_tables())
-    cust = Customer(cust_id=2, full_name="itamar129", age=21, phone="0584706025")
-    add_customer(cust)
 
-    delete_customer(-1)
+    dish = Dish(10,"itamar",50, 1)
+    add_dish(dish)
+
     clear_tables()
     drop_tables()
