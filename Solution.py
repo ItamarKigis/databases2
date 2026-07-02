@@ -52,7 +52,7 @@ def create_tables() -> None:
                      "order_id INTEGER,"
                      "cust_id INTEGER, "
                      "FOREIGN KEY (order_id) REFERENCES Orders(order_id),"
-                     "FOREIGN KEY (cust_id) REFERENCES Customers(cust_id),"
+                     "FOREIGN KEY (cust_id) REFERENCES Customers(cust_id) ON DELETE CASCADE,"
                      "PRIMARY KEY(order_id, cust_id))")
 
         conn.execute("CREATE TABLE MealContains("
@@ -70,7 +70,7 @@ def create_tables() -> None:
                      "cust_id INTEGER,"
                      "dish_id INTEGER, "
                      "rating INTEGER NOT NULL, "
-                     "FOREIGN KEY (cust_id) REFERENCES Customers(cust_id),"
+                     "FOREIGN KEY (cust_id) REFERENCES Customers(cust_id) ON DELETE CASCADE,"
                      "FOREIGN KEY (dish_id) REFERENCES Dish(dish_id),"
                      "PRIMARY KEY(cust_id, dish_id),"
                      "CHECK(rating >= 1),"
@@ -186,8 +186,15 @@ def get_customer(customer_id: int) -> Customer:
 
 
 def delete_customer(customer_id: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    rows_effected = 0
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL("DELETE FROM  WHERE id={0}").format(sql.Literal(ID))
+        rows_effected, _ = conn.execute(query)
+    except DatabaseException.ConnectionInvalid as e:
+        print(e)
+
 
 
 def add_order(order: Order) -> ReturnValue:
