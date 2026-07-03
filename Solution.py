@@ -121,7 +121,7 @@ def drop_tables() -> None:
         conn.execute("DROP TABLE IF EXISTS Rated;")
         conn.execute("DROP TABLE IF EXISTS Customers;")
         conn.execute("DROP TABLE IF EXISTS Orders;")
-        conn.execute("DROP TABLE IF EXISTS Dish;")
+        conn.execute("DROP TABLE IF EXISTS Dish CASCADE;")
 
     except Exception as e:
         print(e)
@@ -241,6 +241,7 @@ def get_order(order_id: int) -> Order:
         res = conn.execute(query)
 
         if res is not None and len(res) > 0:
+            print(type(res[0]))
             res = res[1]
             ret_val = Order()
             ret_val.set_order_id(res["order_id"][0])
@@ -363,24 +364,87 @@ def customer_placed_order(customer_id: int, order_id: int) -> ReturnValue:
 
 def get_customer_that_placed_order(order_id: int) -> Customer:
     # TODO: implement
-    pass:
-
-
-
-def order_contains_dish(order_id: int, dish_id: int, amount: int) -> ReturnValue:
-    # TODO: implement
     pass
+
+
+###############################################################################################################################
+def order_contains_dish(order_id: int, dish_id: int, amount: int) -> ReturnValue:
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+
+        query = (sql.SQL("CREATE VIEW"
+                         " DishView AS "
+                         " SELECT price FROM Dish WHERE dish_id = {_dish_id} AND is_active = TRUE;")
+                 .format(_dish_id=sql.Literal(dish_id)))
+        conn.execute(query)
+
+        query_cont = (sql.SQL("INSERT INTO MealContains (order_id, dish_id, amount, price_upon_order) "
+                 "VALUES ({_order_id},{_dish_id},{_amount}, price) WHERE price IN DishView.price")
+                .format(_order_id=sql.Literal(order_id),_dish_id=sql.Literal(dish_id), _amount=sql.Literal(amount)))
+        conn.execute(query_cont)
+
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.CHECK_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.FOREIGN_KEY_VIOLATION:
+            return ReturnValue.NOT_EXISTS
+    except DatabaseException.UNIQUE_VIOLATION:
+        return ReturnValue.ALREADY_EXISTS
+    except Exception as e:
+        return ReturnValue.ERROR
+
+    finally:
+        if conn:
+            conn.close()
 
 
 def order_does_not_contain_dish(order_id: int, dish_id: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    if order_id <= 0 or dish_id <= 0: #illegal id's
+        return ReturnValue.NOT_EXISTS
+
+    conn = None
+    rows_effected = 0
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("DELETE FROM MealContains WHERE order_is = {_order_id} AND dish_is = {_dish_id}")
+                 .format(_order_id=sql.Literal(order_id), _dish_id=sql.Literal(dish_id)))
+        rows_effected, _ = conn.execute(query)
+        if rows_effected == 0:
+            return ReturnValue.NOT_EXISTS
+        return ReturnValue.OK
+    except Exception as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+
 
 
 def get_all_order_items(order_id: int) -> List[OrderDish]:
-    # TODO: implement
-    pass
+    conn = None
+    ret_val = []
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("SELECT dish_id, amount, price_upon_order "
+                        "FROM MealContains WHERE order_id = {_order_id}"
+                         " ORDER BY dish_id ASC;")
+                 .format(_order_id=sql.Literal(order_id)))
+        res = conn.execute(query)
+        res = res[1]
 
+        for dish_id, amount, price_upon_order in res:
+            ret_val.append(OrderDish(dish_id, amount, price_upon_order))
+
+        return ret_val
+    except Exception as e:
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+####################################################################################################################################
 
 def customer_rated_dish(cust_id: int, dish_id: int, rating: int) -> ReturnValue:
     # TODO: implement
@@ -446,10 +510,17 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
 if __name__ == '__main__':
     create_tables()
 
-    dish = Dish(20,"itamar",50, True)
-    add_dish(dish)
-    print(get_dish(20))
-    print(update_dish_price(20,  70))
-    print(get_dish(20))
+    order = Order(20,"2026-07-03 14:30:15.123456",50, "hadera")
+    add_order(order)
+    get_order(20)
+
+
+    #ord = Order(1, "2026-07-03 14:30:15.123456", 10, "hashita", 5)
+    #print(get_dish(20))
+    #print(update_dish_price(20,  70))
+    #print(get_dish(20))
+
+    #order_contains_dish(1,20,5)
+
     clear_tables()
     drop_tables()
