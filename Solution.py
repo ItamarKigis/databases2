@@ -117,7 +117,7 @@ def drop_tables() -> None:
     try:
         conn = Connector.DBConnector()
         conn.execute("DROP TABLE IF EXISTS Ordered;")
-        conn.execute("DROP TABLE IF EXISTS MealContains;")
+        conn.execute("DROP TABLE IF EXISTS MealContains CASCADE;")
         conn.execute("DROP TABLE IF EXISTS Rated;")
         conn.execute("DROP TABLE IF EXISTS Customers;")
         conn.execute("DROP TABLE IF EXISTS Orders;")
@@ -467,13 +467,68 @@ def get_all_customer_ratings(cust_id: int) -> List[Tuple[int, int]]:
 
 
 def get_order_total_price(order_id: int) -> float:
-    # TODO: implement
-    pass
+    conn = None
+    ret_val = []
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("CREATE VIEW OrderView AS"
+            " SELECT order_id, SUM(amount*price_upon_order) AS bill"
+            " FROM MealContains"
+            " GROUP BY order_id"))
+        conn.execute(query)
+
+        query_cont = sql.SQL("SELECT bill+delivery_fee+tip AS res "
+                             "FROM OrderView INNER JOIN Orders "
+                             "ON OrderView.order_id = Orders.order_id "
+                             "WHERE Orders.order_id = {_order_id}").format(_order_id=sql.Literal(order_id))
+        res = ((conn.execute(query_cont)[1]['res']))
+        res = res[0]
+        res = float(res)
+        return res
+
+    except Exception as e:
+        print(e)
+        return []
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_customers_spent_max_avg_amount_money() -> List[int]:
-    # TODO: implement
-    pass
+    conn = None
+    ret_val = []
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("CREATE VIEW OrderView AS"
+            " SELECT order_id, SUM(amount*price_upon_order) AS bill"
+            " FROM MealContains"
+            " GROUP BY order_id"))
+        conn.execute(query)
+
+        query_cont = sql.SQL("SELECT Ordered.cust_id, SubTable.res "
+                             "FROM (SELECT Ordered.cust_id, AVG(bill + delivery_fee + tip) AS res "
+                             "FROM Ordered "
+                             "INNER JOIN OrderView ON Ordered.order_id = OrderView.order_id "
+                             "INNER JOIN Orders ON OrderView.order_id = Orders.order_id "
+                             "GROUP BY Ordered.cust_id) AS SubTable"
+                             "WHERE SubTable.res = (SELECT MAX(InnerSub.res)"
+                             "FROM (SELECT AVG(bill + delivery_fee + tip) AS res"
+                             "FROM Ordered"
+                             "INNER JOIN OrderView ON Ordered.order_id = OrderView.order_id"
+                             "INNER JOIN Orders ON OrderView.order_id = Orders.order_id"
+                             "GROUP BY Ordered.cust_id) AS InnerSub)"
+                             "ORDER BY Ordered.cust_id ASC")
+        res = ((conn.execute(query_cont)))
+
+        return res
+
+    except Exception as e:
+        print(e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
 
 
 def get_most_profitable_dish_in_period(start: datetime, end: datetime) -> Dish:
@@ -511,6 +566,8 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
 
 
 if __name__ == '__main__':
+    #clear_tables()
+    #drop_tables()
     create_tables()
 
     order = Order(20,"2026-07-03 14:30:15.123456",50, "hadera", 5)
@@ -527,15 +584,21 @@ if __name__ == '__main__':
     order_contains_dish(20,20,5)
     order_contains_dish(20,30,17)
 
-    order_does_not_contain_dish(20, 30)
-    order_does_not_contain_dish(20, 20)
 
-    #delete_order(20)
+    dish = Dish(40, "itamar", 3, True)
+    add_dish(dish)
 
-    res = get_all_order_items(20)
+    order_contains_dish(20,40,3)
 
-    for i in res:
-        print(i)
+
+    order = Order(30,"2026-07-03 14:30:15.123456",50, "hadera", 5)
+    add_order(order)
+    order_contains_dish(30,20,5)
+
+    cust = Customer(20, "itamar", 20, "0584706025")
+    customer_placed_order(20,20)
+
+    get_customers_spent_max_avg_amount_money()
 
     clear_tables()
     drop_tables()
