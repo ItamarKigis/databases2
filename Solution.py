@@ -76,6 +76,44 @@ def create_tables() -> None:
                      "CHECK(rating >= 1),"
                      "CHECK(rating <= 5))")
 
+
+        query = (sql.SQL("""
+                    CREATE VIEW customerOrderedDishes AS
+                    SELECT DISTINCT
+                    Ordered.cust_id,
+                    MealContains.dish_id
+                    FROM 
+                    Ordered
+                    INNER JOIN 
+                    MealContains     
+                    ON 
+                    Ordered.order_id = MealContains.order_id;
+                    """))
+        conn.execute(query)
+
+        query = (sql.SQL("CREATE VIEW OrderView AS"
+            " SELECT order_id, SUM(amount*price_upon_order) AS bill"
+            " FROM MealContains"
+            " GROUP BY order_id"))
+        conn.execute(query)
+
+        #for 4.4.2
+        query = (sql.SQL("CREATE VIEW DishNotWorthCandidates AS SELECT DISTINCT dish_id FROM "
+                         "(SELECT Dish.dish_id FROM Dish INNER JOIN MealContains ON Dish.dish_id = MealContains.dish_id WHERE Dish.price = MealContains.price_upon_order)"
+                         "INTERSECT "
+                         "(SELECT Dish.dish_id FROM Dish INNER JOIN MealContains ON Dish.dish_id = MealContains.dish_id WHERE Dish.price > MealContains.price_upon_order)"
+                         "INTERSECT "
+                         "(SELECT dish_id FROM Dish WHERE is_active = True)"))
+        conn.execute(query)
+        #for 4.4.2
+        query = (sql.SQL("""CREATE VIEW avgPerPriceTable AS
+                         (SELECT MealContains.dish_id, price_upon_order,price, AVG(amount)*price_upon_order as avgPerPrice FROM  
+            Dish INNER JOIN  MealContains ON MealContains.dish_id = Dish.dish_id
+            INNER JOIN DishNotWorthCandidates ON DishNotWorthCandidates.dish_id = MealContains.dish_id
+            GROUP BY price_upon_order, MealContains.dish_id, Dish.price)"""))
+        conn.execute(query)
+
+
     except DatabaseException.ConnectionInvalid as e:
         print(e)
     except DatabaseException.NOT_NULL_VIOLATION as e:
@@ -116,11 +154,11 @@ def drop_tables() -> None:
     conn = None
     try:
         conn = Connector.DBConnector()
-        conn.execute("DROP TABLE IF EXISTS Ordered;")
+        conn.execute("DROP TABLE IF EXISTS Ordered CASCADE;")
         conn.execute("DROP TABLE IF EXISTS MealContains CASCADE;")
         conn.execute("DROP TABLE IF EXISTS Rated;")
         conn.execute("DROP TABLE IF EXISTS Customers;")
-        conn.execute("DROP TABLE IF EXISTS Orders;")
+        conn.execute("DROP TABLE IF EXISTS Orders ;")
         conn.execute("DROP TABLE IF EXISTS Dish CASCADE;")
 
     except Exception as e:
@@ -598,7 +636,9 @@ def did_customer_order_top_rated_dishes(cust_id: int) -> bool:
         """)).format(_cust_id= sql.Literal(cust_id))
 
         res = ((conn.execute(query)))
-        print(res)
+        if res[0] == 0:
+            return False
+        return True
     except Exception as e:
         return False
     finally:
@@ -612,13 +652,78 @@ def did_customer_order_top_rated_dishes(cust_id: int) -> bool:
 
 
 def get_customers_rated_but_not_ordered() -> List[int]:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+
+        query = (sql.SQL("""
+                SELECT DISTINCT custRatedDishBad.cust_id 
+                FROM                    
+                (SELECT lowestDishes.dish_id, badRatings.cust_id
+                FROM
+                (SELECT cust_id, dish_id FROM Rated WHERE rating < 3 ) AS badRatings 
+                INNER JOIN
+                (SELECT 
+                Dish.dish_id,
+                COALESCE(AVG(Rated.rating), 3.0) AS avg_rating
+                FROM Dish 
+                LEFT JOIN 
+                Rated ON Dish.dish_id = Rated.dish_id
+                GROUP BY Dish.dish_id
+                ORDER BY avg_rating ASC, Dish.dish_id ASC    
+                LIMIT 5) 
+                AS lowestDishes
+    
+                ON badRatings.dish_id = lowestDishes.dish_id) AS custRatedDishBad
+                
+                WHERE NOT EXISTS (
+                        SELECT * FROM customerOrderedDishes
+                        WHERE customerOrderedDishes.cust_id = custRatedDishBad.cust_id 
+                          AND customerOrderedDishes.dish_id = custRatedDishBad.dish_id
+                    )
+                ORDER BY custRatedDishBad.cust_id ASC
+        """))
+        res = ((conn.execute(query)))
+        if res[0] == 0:
+            return []
+        ret_val = [] #tomorrow....
+        return res[1]
+
+    except Exception as e:
+        return []
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_non_worth_price_increase() -> List[int]:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL(""" SELECT DISTINCT avgPerPriceTable.dish_id
+            FROM avgPerPriceTable
+            INNER JOIN
+            avgPerPriceTable AS avgPerPriceTableDup
+            ON avgPerPriceTable.dish_id = avgPerPriceTableDup.dish_id
+            
+            WHERE avgPerPriceTableDup.price_upon_order = avgPerPriceTableDup.price 
+            AND avgPerPriceTableDup.price > avgPerPriceTable.price
+            AND avgPerPriceTable.avgPerPrice > avgPerPriceTableDup.avgPerPrice
+            ORDER BY avgPerPriceTable.dish_id ASC;
+            """))
+
+        res = ((conn.execute(query)))
+        if res[0] == 0:
+            return []
+        ret_val = [] #tomorrow....
+        return res[1]
+
+    except Exception as e:
+        return []
+    finally:
+        if conn:
+            conn.close()
+
 
 
 def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
