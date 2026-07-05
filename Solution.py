@@ -568,8 +568,42 @@ def get_most_profitable_dish_in_period(start: datetime, end: datetime) -> Dish:
             conn.close()
 
 def did_customer_order_top_rated_dishes(cust_id: int) -> bool:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("""
+            SELECT Dishes.dish_id
+            FROM 
+            (SELECT DISTINCT MealContains.dish_id
+            FROM MealContains 
+            INNER JOIN Ordered ON Ordered.order_id = MealContains.order_id
+            WHERE Ordered.cust_id = {_cust_id}) AS Dishes
+            INNER JOIN 
+            (SELECT 
+            DishesSub.dish_id,
+            COALESCE(Average.avgRated, 3) AS final_rating
+            FROM 
+            (SELECT DISTINCT MealContains.dish_id
+            FROM MealContains 
+            INNER JOIN Ordered ON Ordered.order_id = MealContains.order_id
+            WHERE Ordered.cust_id = {_cust_id}) AS DishesSub
+            LEFT JOIN 
+            (SELECT dish_id, AVG(rating) AS avgRated
+            FROM Rated
+            GROUP BY dish_id) AS Average 
+            ON DishesSub.dish_id = Average.dish_id
+            ORDER BY final_rating DESC, DishesSub.dish_id ASC
+            LIMIT 5) AS TopFiveDishes
+            ON Dishes.dish_id = TopFiveDishes.dish_id
+        """)).format(_cust_id= sql.Literal(cust_id))
+
+        res = ((conn.execute(query)))
+        print(res)
+    except Exception as e:
+        return False
+    finally:
+        if conn:
+            conn.close()
 
 
 # ---------------------------------- ADVANCED API: ----------------------------------
@@ -609,20 +643,31 @@ if __name__ == '__main__':
     order = Order(22,"2026-07-03 20:30:15.123456",50, "hadera", 5)
     add_order(order)
 
+    customer = Customer(10,"itamar1", 20,"0584706025")
+    add_customer(customer)
+    customer = Customer(11,"itamar2", 20,"0584706025")
+    add_customer(customer)
+    customer = Customer(12,"itamar3", 20,"0584706025")
+    add_customer(customer)
+
+    print(customer_placed_order(10,20))
+    customer_placed_order(11,21)
+    customer_placed_order(12,22)
+    did_customer_order_top_rated_dishes(10)
 
     dish = Dish(20, "itamar", 10, True)
-    add_dish(dish)
+    #add_dish(dish)
     dish = Dish(30, "itamar", 10, True)
-    add_dish(dish)
+    #add_dish(dish)
     dish = Dish(40, "itamar", 10, True)
-    add_dish(dish)
+    #add_dish(dish)
 
-    order_contains_dish(20,20,10)
-    order_contains_dish(21, 30, 10)
-    order_contains_dish(22, 40, 10)
+    #order_contains_dish(20,20,10)
+    #order_contains_dish(21, 30, 10)
+    #order_contains_dish(22, 40, 10)
 
-    order_contains_dish(22, 30, 3)
-    get_most_profitable_dish_in_period("2020-07-03 16:30:15.123456","2029-07-03 22:30:15.123456" )
+    #order_contains_dish(22, 30, 3)
+    #get_most_profitable_dish_in_period("2020-07-03 16:30:15.123456","2029-07-03 22:30:15.123456" )
 
     clear_tables()
     drop_tables()
