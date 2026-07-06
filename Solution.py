@@ -51,7 +51,7 @@ def create_tables() -> None:
         conn.execute("CREATE TABLE Ordered("
                      "order_id INTEGER,"
                      "cust_id INTEGER, "
-                     "FOREIGN KEY (order_id) REFERENCES Orders(order_id),"
+                     "FOREIGN KEY (order_id) REFERENCES Orders(order_id) ON DELETE CASCADE,"
                      "FOREIGN KEY (cust_id) REFERENCES Customers(cust_id) ON DELETE CASCADE,"
                      "PRIMARY KEY(order_id, cust_id))")
 
@@ -60,7 +60,7 @@ def create_tables() -> None:
                      "dish_id INTEGER, "
                      "amount INTEGER NOT NULL, "
                      "price_upon_order INTEGER NOT NULL, "
-                     "FOREIGN KEY (order_id) REFERENCES Orders(order_id),"
+                     "FOREIGN KEY (order_id) REFERENCES Orders(order_id) ON DELETE CASCADE,"
                      "FOREIGN KEY (dish_id) REFERENCES Dish(dish_id),"
                      "PRIMARY KEY(order_id, dish_id),"
                      "CHECK(amount >= 0),"
@@ -336,13 +336,27 @@ def update_dish_price(dish_id: int, price: float) -> ReturnValue:
 
 
 def update_dish_active_status(dish_id: int, is_active: bool) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("UPDATE Dish" \
+                        " SET is_active = {_is_active}" \
+                        " WHERE dish_id = {dish_id};").format(
+                                        _is_active=sql.Literal(is_active),
+                                        dish_id=sql.Literal(dish_id)))
+        rows_effected, _ = conn.execute(query)
+        if rows_effected == 0:
+                return ReturnValue.NOT_EXISTS
+        return ReturnValue.OK
+    except Exception as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
 
 
 def customer_placed_order(customer_id: int, order_id: int) -> ReturnValue:
-    # TODO: implement
-    pass
+
 
 
 def get_customer_that_placed_order(order_id: int) -> Customer:
