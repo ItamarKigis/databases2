@@ -58,7 +58,7 @@ def create_tables() -> None:
                      "order_id INTEGER,"
                      "dish_id INTEGER, "
                      "amount INTEGER NOT NULL, "
-                     "price_upon_order INTEGER NOT NULL, "
+                     "price_upon_order DECIMAL NOT NULL, "
                      "FOREIGN KEY (order_id) REFERENCES Orders(order_id) ON DELETE CASCADE,"
                      "FOREIGN KEY (dish_id) REFERENCES Dish(dish_id),"
                      "PRIMARY KEY(order_id, dish_id),"
@@ -591,7 +591,7 @@ def get_all_customer_ratings(cust_id: int) -> List[Tuple[int, int]]:
         res = conn.execute(query)
         records = res[1]
         for row in records:
-            ret_val.append((row['dish_id'], row['rating']))
+            ret_val.append((row['dish_id'][0], row['rating'][0]))
         return ret_val
     except Exception:
         return []
@@ -608,17 +608,11 @@ def get_order_total_price(order_id: int) -> float:
     ret_val = []
     try:
         conn = Connector.DBConnector()
-        query = (sql.SQL("CREATE VIEW OrderView AS"
-            " SELECT order_id, SUM(amount*price_upon_order) AS bill"
-            " FROM MealContains"
-            " GROUP BY order_id"))
-        conn.execute(query)
-
-        query_cont = sql.SQL("SELECT bill+delivery_fee+tip AS res "
+        query = sql.SQL("SELECT bill+delivery_fee+tip AS res "
                              "FROM OrderView INNER JOIN Orders "
                              "ON OrderView.order_id = Orders.order_id "
                              "WHERE Orders.order_id = {_order_id}").format(_order_id=sql.Literal(order_id))
-        res = ((conn.execute(query_cont)[1]['res']))
+        res = ((conn.execute(query)[1]['res']))
         res = res[0]
         res = float(res)
         return res
@@ -635,18 +629,12 @@ def get_customers_spent_max_avg_amount_money() -> List[int]:
     ret_val = []
     try:
         conn = Connector.DBConnector()
-        query = (sql.SQL("CREATE VIEW OrderView AS"
-            " SELECT order_id, SUM(amount*price_upon_order) AS bill"
-            " FROM MealContains"
-            " GROUP BY order_id"))
-        conn.execute(query)
-
-        query_cont = sql.SQL("SELECT Ordered.cust_id, SubTable.res "
+        query = sql.SQL("SELECT Ordered.cust_id, SubTable.res "
                              "FROM (SELECT Ordered.cust_id, AVG(bill + delivery_fee + tip) AS res "
                              "FROM Ordered "
                              "INNER JOIN OrderView ON Ordered.order_id = OrderView.order_id "
                              "INNER JOIN Orders ON OrderView.order_id = Orders.order_id "
-                             "GROUP BY Ordered.cust_id) AS SubTable"
+                             "GROUP BY Ordered.cust_id) AS SubTable "
                              "WHERE SubTable.res = (SELECT MAX(InnerSub.res)"
                              "FROM (SELECT AVG(bill + delivery_fee + tip) AS res"
                              "FROM Ordered"
@@ -654,7 +642,7 @@ def get_customers_spent_max_avg_amount_money() -> List[int]:
                              "INNER JOIN Orders ON OrderView.order_id = Orders.order_id"
                              "GROUP BY Ordered.cust_id) AS InnerSub)"
                              "ORDER BY Ordered.cust_id ASC")
-        res = ((conn.execute(query_cont)))
+        res = ((conn.execute(query)))
 
         return res
 
@@ -679,7 +667,7 @@ def get_most_profitable_dish_in_period(start: datetime, end: datetime) -> Dish:
                             FROM (MealContains INNER JOIN 
                             (SELECT order_id 
                              FROM Orders 
-                             WHERE date > {_start} AND date < {_end}) AS CURR 
+                             WHERE date >= {_start} AND date <= {_end}) AS CURR 
                              ON MealContains.order_id = CURR.order_id))
                              GROUP BY dish_id
                              ORDER BY total DESC , dish_id ASC
