@@ -112,7 +112,6 @@ def create_tables() -> None:
             GROUP BY price_upon_order, MealContains.dish_id, Dish.price)"""))
         conn.execute(query)
 
-
     except DatabaseException.ConnectionInvalid as e:
         print(e)
     except DatabaseException.NOT_NULL_VIOLATION as e:
@@ -823,54 +822,138 @@ def get_non_worth_price_increase() -> List[int]:
             conn.close()
 
 
-
 def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
-    # TODO: implement
-    pass
+    conn = None
+    year_start_timestamp = "{_year}-01-01 00:00:00.000000".format(_year=year)
+    year_end_timestamp = "{_year}-12-31 23:59:59.999999".format(_year=year)
+
+    filterQuery = sql.SQL("""
+                          SELECT EXTRACT(MONTH FROM Orders.date) as month,
+            SUM(OrderView.bill + Orders.tip) as totalOrder
+                          FROM OrderView
+                              INNER JOIN Orders
+                          ON Orders.order_id = OrderView.order_id
+                          WHERE Orders.date >= {_start} AND Orders.date <= {_end}
+                          GROUP BY EXTRACT (MONTH FROM Orders.date)
+                          """)
+
+    formatted_base = filterQuery.format(
+        _start=sql.Literal(year_start_timestamp),
+        _end=sql.Literal(year_end_timestamp)
+    )
+
+    try:
+        conn = Connector.DBConnector()
+
+        query = sql.SQL("""
+                        SELECT months_grid.m_num AS month,
+                COALESCE(SUM(historical_months.totalOrder), 0) AS cumulative_profit
+                        FROM
+                            (SELECT generate_series(1, 12) AS m_num) AS months_grid
+                            LEFT JOIN
+                            ({base_subquery}) AS historical_months
+                        ON
+                            historical_months.month <= months_grid.m_num
+                        GROUP BY
+                            months_grid.m_num
+                        ORDER BY
+                            month DESC;
+                        """).format(base_subquery=formatted_base)
+
+        _, rows = conn.execute(query)
+        return [(int(row['month']), float(row['cumulative_profit'])) for row in rows]
+
+    except Exception as e:
+        raise e
+    finally:
+        if conn:
+            conn.close()
+
 
 
 def get_potential_dish_recommendations(cust_id: int) -> List[int]:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+
+        query = sql.SQL("""
+            WITH RECURSIVE custSimiliar AS (
+                SELECT DISTINCT rTwo.cust_id 
+                FROM Rated rOne
+                INNER JOIN Rated rTwo ON rOne.dish_id = rTwo.dish_id
+                WHERE rOne.Rating >= 4 AND rTwo.Rating >= 4 AND rOne.cust_id = {_cust_id}
+
+                UNION
+
+                SELECT DISTINCT rTwoCont.cust_id
+                FROM Rated rOneCont
+                INNER JOIN custSimiliar ON custSimiliar.cust_id = rOneCont.cust_id 
+                INNER JOIN Rated rTwoCont ON rTwoCont.dish_id = rOneCont.dish_id 
+                WHERE rOneCont.Rating >= 4 AND rTwoCont.Rating >= 4 
+            )
+
+            SELECT DISTINCT Rated.dish_id
+            FROM Rated
+            INNER JOIN custSimiliar ON custSimiliar.cust_id = Rated.cust_id
+            WHERE Rated.Rating >= 4
+              AND Rated.dish_id NOT IN (
+                  SELECT dish_id 
+                  FROM customerOrderedDishes 
+                  WHERE cust_id = {_cust_id}
+              );
+        """).format(_cust_id=sql.Literal(cust_id))
+
+    except Exception as e:
+        return []
+    finally:
+        if conn:
+            conn.close()
 
 
 if __name__ == '__main__':
     #clear_tables()
     #drop_tables()
-    create_tables()
+    try:
+        create_tables()
 
-    order = Order(20,"2026-07-03 14:30:15.123456",50, "hadera", 5)
-    add_order(order)
-    order = Order(21,"2026-07-03 20:30:15.123456",50, "hadera", 5)
-    add_order(order)
-    order = Order(22,"2026-07-03 20:30:15.123456",50, "hadera", 5)
-    add_order(order)
+        order = Order(20,"2026-07-03 14:30:15.123456",50, "hadera", 5)
+        add_order(order)
+        order = Order(21,"2026-08-03 20:30:15.123456",50, "hadera", 5)
+        add_order(order)
+        order = Order(22,"2026-07-03 20:30:15.123456",50, "hadera", 5)
+        add_order(order)
 
-    customer = Customer(10,"itamar1", 20,"0584706025")
-    add_customer(customer)
-    customer = Customer(11,"itamar2", 20,"0584706025")
-    add_customer(customer)
-    customer = Customer(12,"itamar3", 20,"0584706025")
-    add_customer(customer)
+        customer = Customer(10,"itamar1", 20,"0584706025")
+        add_customer(customer)
+        customer = Customer(11,"itamar2", 20,"0584706025")
+        add_customer(customer)
+        customer = Customer(12,"itamar3", 20,"0584706025")
+        add_customer(customer)
 
-    print(customer_placed_order(10,20))
-    customer_placed_order(11,21)
-    customer_placed_order(12,22)
-    did_customer_order_top_rated_dishes(10)
+        customer_placed_order(10,20)
+        customer_placed_order(11,21)
+        customer_placed_order(12,22)
+        did_customer_order_top_rated_dishes(10)
 
-    dish = Dish(20, "itamar", 10, True)
-    #add_dish(dish)
-    dish = Dish(30, "itamar", 10, True)
-    #add_dish(dish)
-    dish = Dish(40, "itamar", 10, True)
-    #add_dish(dish)
+        dish = Dish(20, "itamar", 15, True)
+        add_dish(dish)
+        dish = Dish(30, "itamar", 10, True)
+        add_dish(dish)
+        dish = Dish(40, "itamar", 10, True)
+        add_dish(dish)
 
-    #order_contains_dish(20,20,10)
-    #order_contains_dish(21, 30, 10)
-    #order_contains_dish(22, 40, 10)
+        order_contains_dish(20,20,15)
+        order_contains_dish(21, 30, 10)
+        order_contains_dish(22, 40, 10)
 
-    #order_contains_dish(22, 30, 3)
-    #get_most_profitable_dish_in_period("2020-07-03 16:30:15.123456","2029-07-03 22:30:15.123456" )
+        #order_contains_dish(22, 30, 3)
+        #get_most_profitable_dish_in_period("2020-07-03 16:30:15.123456","2029-07-03 22:30:15.123456" )
 
-    clear_tables()
-    drop_tables()
+        update_dish_price(20,100)
+
+        order_contains_dish(21, 20, 5)
+        print(get_cumulative_profit_per_month(2026))
+
+    finally:
+        clear_tables()
+        drop_tables()
