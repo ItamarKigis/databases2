@@ -49,11 +49,10 @@ def create_tables() -> None:
                      "CHECK(dish_id > 0))")
 
         conn.execute("CREATE TABLE Ordered("
-                     "order_id INTEGER,"
+                     "order_id INTEGER PRIMARY KEY,"
                      "cust_id INTEGER, "
                      "FOREIGN KEY (order_id) REFERENCES Orders(order_id) ON DELETE CASCADE,"
-                     "FOREIGN KEY (cust_id) REFERENCES Customers(cust_id) ON DELETE CASCADE,"
-                     "PRIMARY KEY(order_id, cust_id))")
+                     "FOREIGN KEY (cust_id) REFERENCES Customers(cust_id))")
 
         conn.execute("CREATE TABLE MealContains("
                      "order_id INTEGER,"
@@ -215,8 +214,7 @@ def get_customer(customer_id: int) -> Customer:
             return ret_val
         else:
             return BadCustomer()
-    except Exception as e:
-        print(e)
+    except Exception:
         return BadCustomer()
     finally:
         if conn:
@@ -270,7 +268,7 @@ def add_order(order: Order) -> ReturnValue:
 
 
 def get_order(order_id: int) -> Order:
-    cone = None
+    conn = None
     try:
         conn = Connector.DBConnector()
         query = (sql.SQL("SELECT order_id, date, delivery_fee, delivery_address, tip "
@@ -305,8 +303,7 @@ def delete_order(order_id: int) -> ReturnValue:
         query = sql.SQL("DELETE FROM Orders WHERE order_id = {_id}").format(_id=sql.Literal(order_id))
         rows_effected, _ = conn.execute(query)
         return ReturnValue.OK
-    except Exception as e:
-        print(e)
+    except Exception:
         return ReturnValue.ERROR
     finally:
         if conn:
@@ -360,8 +357,7 @@ def get_dish(dish_id: int) -> Dish:
             return ret_val
         else:
             return BadDish()
-    except Exception as e:
-        print(e)
+    except Exception:
         return BadDish()
     finally:
         if conn:
@@ -410,12 +406,56 @@ def update_dish_active_status(dish_id: int, is_active: bool) -> ReturnValue:
 
 
 def customer_placed_order(customer_id: int, order_id: int) -> ReturnValue:
+    # maybe manual check later if tests fail for illegal ids, but for now we will assume the illegal ids are cought with foreign key violation
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("INSERT INTO Ordered (cust_id, order_id) "
+                 "VALUES ({_cust_id},{_order_id})")
+                 .format(_cust_id=sql.Literal(customer_id),
+                         _order_id=sql.Literal(order_id)))
+        conn.execute(query)
+        return ReturnValue.OK
+    
+    except DatabaseException.UNIQUE_VIOLATION:
+        return ReturnValue.ALREADY_EXISTS
+    except DatabaseException.FOREIGN_KEY_VIOLATION:
+        return ReturnValue.NOT_EXISTS
+    except Exception:
+        return ReturnValue.ERROR
+
+    finally:
+        if conn:
+            conn.close()
 
 
 
 def get_customer_that_placed_order(order_id: int) -> Customer:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("SELECT Customers.cust_id, name, age, phone "
+                        "FROM Customers INNER JOIN Ordered ON Customers.cust_id = Ordered.cust_id "
+                        "WHERE Ordered.order_id = {_order_id};")
+                 .format(_order_id=sql.Literal(order_id)))
+        res = conn.execute(query)
+
+        if res is not None and len(res) > 0:
+            res = res[1]
+            ret_val = Customer()
+            ret_val.set_cust_id(res["cust_id"][0])
+            ret_val.set_full_name(res["name"][0])
+            ret_val.set_age(res["age"][0])
+            ret_val.set_phone(res["phone"][0])
+
+            return ret_val
+        else:
+            return BadCustomer()
+    except Exception as e:
+        return BadCustomer()
+    finally:
+        if conn:
+            conn.close()
 
 
 ###############################################################################################################################
@@ -445,8 +485,7 @@ def order_contains_dish(order_id: int, dish_id: int, amount: int) -> ReturnValue
             return ReturnValue.NOT_EXISTS
     except DatabaseException.UNIQUE_VIOLATION:
         return ReturnValue.ALREADY_EXISTS
-    except Exception as e:
-        print(e)
+    except Exception:
         return ReturnValue.ERROR
 
     finally:
@@ -468,8 +507,7 @@ def order_does_not_contain_dish(order_id: int, dish_id: int) -> ReturnValue:
         if rows_effected == 0:
             return ReturnValue.NOT_EXISTS
         return ReturnValue.OK
-    except Exception as e:
-        print(e)
+    except Exception:
         return ReturnValue.ERROR
     finally:
         if conn:
@@ -493,7 +531,6 @@ def get_all_order_items(order_id: int) -> List[OrderDish]:
             ret_val.append(OrderDish(curr[1]['dish_id'], curr[1]['amount'], curr[1]['price_upon_order'] ))
         return ret_val
     except Exception as e:
-        print(e)
         return []
     finally:
         if conn:
@@ -538,8 +575,7 @@ def get_order_total_price(order_id: int) -> float:
         res = float(res)
         return res
 
-    except Exception as e:
-        print(e)
+    except Exception:
         return []
     finally:
         if conn:
@@ -574,8 +610,7 @@ def get_customers_spent_max_avg_amount_money() -> List[int]:
 
         return res
 
-    except Exception as e:
-        print(e)
+    except Exception:
         return []
     finally:
         if conn:
