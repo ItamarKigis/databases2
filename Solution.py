@@ -830,25 +830,29 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
         query = sql.SQL("""
             WITH RECURSIVE custSimiliar AS (
                 SELECT DISTINCT rTwo.cust_id 
-                FROM
-                Rated rOne
-                INNER JOIN 
-                Rated rTwo
-                ON rOne.dish_id = rTwo.dish_id
+                FROM Rated rOne
+                INNER JOIN Rated rTwo ON rOne.dish_id = rTwo.dish_id
                 WHERE rOne.Rating >= 4 AND rTwo.Rating >= 4 AND rOne.cust_id = {_cust_id}
-                
+
                 UNION
-                
+
                 SELECT DISTINCT rTwoCont.cust_id
-                FROM 
-                Rated rOneCont
+                FROM Rated rOneCont
                 INNER JOIN custSimiliar ON custSimiliar.cust_id = rOneCont.cust_id 
                 INNER JOIN Rated rTwoCont ON rTwoCont.dish_id = rOneCont.dish_id 
-        
                 WHERE rOneCont.Rating >= 4 AND rTwoCont.Rating >= 4 
-                
-            ) SELECT cust_id FROM custSimiliar
-        """).format(_cust_id=cust_id)
+            )
+
+            SELECT DISTINCT Rated.dish_id
+            FROM Rated
+            INNER JOIN custSimiliar ON custSimiliar.cust_id = Rated.cust_id
+            WHERE Rated.Rating >= 4
+              AND Rated.dish_id NOT IN (
+                  SELECT dish_id 
+                  FROM customerOrderedDishes 
+                  WHERE cust_id = {_cust_id}
+              );
+        """).format(_cust_id=sql.Literal(cust_id))
 
     except Exception as e:
         return []
