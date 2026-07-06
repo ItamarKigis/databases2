@@ -113,7 +113,6 @@ def create_tables() -> None:
             GROUP BY price_upon_order, MealContains.dish_id, Dish.price)"""))
         conn.execute(query)
 
-
     except DatabaseException.ConnectionInvalid as e:
         print(e)
     except DatabaseException.NOT_NULL_VIOLATION as e:
@@ -725,11 +724,59 @@ def get_non_worth_price_increase() -> List[int]:
             conn.close()
 
 
-
 def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
-    # TODO: implement
-    pass
+    conn = None
 
+    # Correct timestamp boundaries for the chosen year
+    year_start_timestamp = f"{year}-01-01 00:00:00.000000"
+    year_end_timestamp = f"{year}-12-31 23:59:59.999999"
+
+    # Define our inline subquery template
+    # We use explicit grouping inside the subquery to match month-by-month totals first
+    subquery_template = """
+        SELECT 
+            EXTRACT(MONTH FROM Orders.timestamp) AS month,
+            SUM(OrderView.bill + OrderView.tip) AS totalOrder
+        FROM OrderView
+        INNER JOIN Orders ON Orders.order_id = OrderView.order_id
+        WHERE Orders.timestamp >= {start} AND Orders.timestamp <= {end}
+        GROUP BY EXTRACT(MONTH FROM Orders.timestamp)
+    """
+
+    # Format the subquery block with actual time bounds
+    formatted_subquery = sql.SQL(subquery_template).format(
+        start=sql.Literal(year_start_timestamp),
+        end=sql.Literal(year_end_timestamp)
+    )
+
+    try:
+        conn = Connector.DBConnector()
+
+        # Build the final self-join running-total query
+        query = sql.SQL("""
+            SELECT 
+                current_months.month,
+                SUM(historical_months.totalOrder) AS cumulative_profit
+            FROM 
+                ({sub_query}) AS current_months
+            INNER JOIN
+                ({sub_query}) AS historical_months
+            ON current_months.month >= historical_months.month
+            GROUP BY current_months.month
+            ORDER BY current_months.month DESC;
+        """).format(sub_query=formatted_subquery)
+
+        _, rows = conn.execute(query)
+
+        # Convert database output records directly to standard Python types
+        return [(int(row[0]), float(row[1])) for row in rows]
+
+    except Exception as e:
+        # Handle exceptions appropriately or re-raise
+        raise e
+    finally:
+        if conn:
+            conn.close()
 
 def get_potential_dish_recommendations(cust_id: int) -> List[int]:
     # TODO: implement
