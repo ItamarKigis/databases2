@@ -233,7 +233,7 @@ def delete_customer(customer_id: int) -> ReturnValue:
         if rows_effected == 0:
             return ReturnValue.NOT_EXISTS
         return ReturnValue.OK
-    except DatabaseException as e:
+    except DatabaseException:
         return ReturnValue.ERROR
 
 
@@ -539,17 +539,66 @@ def get_all_order_items(order_id: int) -> List[OrderDish]:
 ####################################################################################################################################
 
 def customer_rated_dish(cust_id: int, dish_id: int, rating: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("INSERT INTO Rated (cust_id, dish_id, rating) "
+                 "VALUES ({_cust_id},{_dish_id},{_rating})")
+                 .format(_cust_id=sql.Literal(cust_id),
+                         _dish_id=sql.Literal(dish_id),
+                         _rating=sql.Literal(rating)))
+        conn.execute(query)
+        return ReturnValue.OK
+    except DatabaseException.CHECK_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.FOREIGN_KEY_VIOLATION:
+        return ReturnValue.NOT_EXISTS
+    except DatabaseException.UNIQUE_VIOLATION:
+        return ReturnValue.ALREADY_EXISTS
+    except Exception:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
 
 
 def customer_deleted_rating_on_dish(cust_id: int, dish_id: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    rows_effected = 0
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("DELETE FROM Rated WHERE cust_id = {_cust_id} AND dish_id = {_dish_id}")
+                 .format(_cust_id=sql.Literal(cust_id), _dish_id=sql.Literal(dish_id)))
+        rows_effected, _ = conn.execute(query)
+        if rows_effected == 0:
+            return ReturnValue.NOT_EXISTS
+        return ReturnValue.OK
+    
+    except Exception:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
 
 def get_all_customer_ratings(cust_id: int) -> List[Tuple[int, int]]:
-    # TODO: implement
-    pass
+    conn = None
+    ret_val = []
+    try:
+        conn = Connector.DBConnector()
+        query = (sql.SQL("SELECT dish_id, rating "
+                        "FROM Rated WHERE cust_id = {_cust_id}"
+                         " ORDER BY dish_id ASC;")
+                 .format(_cust_id=sql.Literal(cust_id)))
+        res = conn.execute(query)
+        records = res[1]
+        for row in records:
+            ret_val.append((row['dish_id'], row['rating']))
+        return ret_val
+    except Exception:
+        return []
+    finally:
+        if conn:
+            conn.close()
 # ---------------------------------- BASIC API: ----------------------------------
 
 # Basic API
