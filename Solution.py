@@ -375,6 +375,7 @@ def update_dish_price(dish_id: int, price: float) -> ReturnValue:
         rows_effected, _ = conn.execute(query)
         if rows_effected == 0:
             return ReturnValue.NOT_EXISTS
+        return ReturnValue.OK
     except DatabaseException.NOT_NULL_VIOLATION:
         return ReturnValue.BAD_PARAMS
     except DatabaseException.CHECK_VIOLATION:
@@ -463,7 +464,7 @@ def order_contains_dish(order_id: int, dish_id: int, amount: int) -> ReturnValue
     try:
         conn = Connector.DBConnector()
 
-        query_cont = (sql.SQL(
+        query = (sql.SQL(
             "INSERT INTO MealContains (order_id, dish_id, amount, price_upon_order) "
             "SELECT {lit_order_id}, {lit_dish_id}, {lit_amount}, price "
             "FROM Dish "
@@ -473,7 +474,9 @@ def order_contains_dish(order_id: int, dish_id: int, amount: int) -> ReturnValue
             lit_dish_id=sql.Literal(dish_id),
             lit_amount=sql.Literal(amount)
         ))
-        conn.execute(query_cont)
+        rows_affected, _ = conn.execute(query)
+        if rows_affected == 0:
+            return ReturnValue.NOT_EXISTS
         return ReturnValue.OK
 
     except DatabaseException.NOT_NULL_VIOLATION:
@@ -526,7 +529,6 @@ def get_all_order_items(order_id: int) -> List[OrderDish]:
         res = conn.execute(query)
         res = res[1]
         for curr in enumerate(res):
-            print(curr[1]['dish_id'])
             ret_val.append(OrderDish(curr[1]['dish_id'], curr[1]['amount'], curr[1]['price_upon_order'] ))
         return ret_val
     except Exception as e:
@@ -591,7 +593,7 @@ def get_all_customer_ratings(cust_id: int) -> List[Tuple[int, int]]:
         res = conn.execute(query)
         records = res[1]
         for row in records:
-            ret_val.append((row['dish_id'][0], row['rating'][0]))
+            ret_val.append((row['dish_id'], row['rating']))
         return ret_val
     except Exception:
         return []
@@ -608,10 +610,13 @@ def get_order_total_price(order_id: int) -> float:
     ret_val = []
     try:
         conn = Connector.DBConnector()
-        query = sql.SQL("SELECT bill+delivery_fee+tip AS res "
-                             "FROM OrderView INNER JOIN Orders "
-                             "ON OrderView.order_id = Orders.order_id "
-                             "WHERE Orders.order_id = {_order_id}").format(_order_id=sql.Literal(order_id))
+        query = sql.SQL(
+            "SELECT (COALESCE(bill, 0) + delivery_fee + tip) AS res "
+            "FROM Orders "
+            "LEFT JOIN OrderView ON Orders.order_id = OrderView.order_id "
+            "WHERE Orders.order_id = {_order_id};"
+        ).format(_order_id=sql.Literal(order_id))
+
         res = ((conn.execute(query)[1]['res']))
         res = res[0]
         res = float(res)
@@ -629,24 +634,33 @@ def get_customers_spent_max_avg_amount_money() -> List[int]:
     ret_val = []
     try:
         conn = Connector.DBConnector()
-        query = sql.SQL("SELECT Ordered.cust_id, SubTable.res "
-                             "FROM (SELECT Ordered.cust_id, AVG(bill + delivery_fee + tip) AS res "
-                             "FROM Ordered "
-                             "INNER JOIN OrderView ON Ordered.order_id = OrderView.order_id "
-                             "INNER JOIN Orders ON OrderView.order_id = Orders.order_id "
-                             "GROUP BY Ordered.cust_id) AS SubTable "
-                             "WHERE SubTable.res = (SELECT MAX(InnerSub.res)"
-                             "FROM (SELECT AVG(bill + delivery_fee + tip) AS res"
-                             "FROM Ordered"
-                             "INNER JOIN OrderView ON Ordered.order_id = OrderView.order_id"
-                             "INNER JOIN Orders ON OrderView.order_id = Orders.order_id"
-                             "GROUP BY Ordered.cust_id) AS InnerSub)"
-                             "ORDER BY Ordered.cust_id ASC")
+        query = sql.SQL("""
+                    SELECT SubTable.cust_id 
+                    FROM (
+                        SELECT Ordered.cust_id, AVG(OrderView.bill + Orders.delivery_fee + Orders.tip) AS res 
+                        FROM Ordered 
+                        INNER JOIN OrderView ON Ordered.order_id = OrderView.order_id 
+                        INNER JOIN Orders ON OrderView.order_id = Orders.order_id 
+                        GROUP BY Ordered.cust_id
+                    ) AS SubTable 
+                    WHERE SubTable.res = (
+                        SELECT MAX(InnerSub.res)
+                        FROM (
+                            SELECT AVG(OrderView.bill + Orders.delivery_fee + Orders.tip) AS res
+                            FROM Ordered
+                            INNER JOIN OrderView ON Ordered.order_id = OrderView.order_id
+                            INNER JOIN Orders ON OrderView.order_id = Orders.order_id
+                            GROUP BY Ordered.cust_id
+                        ) AS InnerSub
+                    )
+                    ORDER BY SubTable.cust_id ASC;
+                """)
         res = ((conn.execute(query)))
-
+        print("res")
         return res
 
-    except Exception:
+    except Exception as e:
+        print(e)
         return []
     finally:
         if conn:
@@ -898,50 +912,125 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
             conn.close()
 
 
+# if __name__ == '__main__':
+#     try:
+#         create_tables()
+#         order = Order(20,"2026-07-03 14:30:15.123456",100, "hadera", 5)
+#         add_order(order)
+#         order = Order(21,"2026-08-03 20:30:15.123456",50, "hello", 10)
+#         add_order(order)
+#         order = Order(22,"8026-07-03 20:30:15.123456",40, "hadera", 15)
+#         add_order(order)
+#
+#         customer = Customer(10,"itamar1", 71,"0584706025")
+#         add_customer(customer)
+#         customer = Customer(11,"itamar2", 18,"0584706025")
+#         add_customer(customer)
+#         customer = Customer(12,"itamar3", 20,"0584706035")
+#         add_customer(customer)
+#
+#         dish = Dish(30,"rrrr", 50, True)
+#         add_dish(dish)
+#         dish = Dish(31,"rrrr2", 90, True)
+#         add_dish(dish)
+#         dish = Dish(32,"rrrr3", 130, True)
+#         add_dish(dish)
+#
+#         order_contains_dish(22, 31, 5)
+#         order_contains_dish(22,32,3)
+#         print(get_order_total_price(22))
+#
+#         update_dish_price(30, 6)
+#         order_contains_dish(22, 30, 6)
+#
+#         order_does_not_contain_dish(22,31)
+#         print(get_order_total_price(22))
+#
+#         #print(get_all_customer_ratings(11))
+#     finally:
+#         clear_tables()
+#         drop_tables()
 if __name__ == '__main__':
-    #clear_tables()
-    #drop_tables()
     try:
+        # 1. Initialize Tables & Views
+        print("--- Initializing Tables & Views ---")
+        try:
+            drop_tables()
+        except Exception:
+            pass
         create_tables()
 
-        order = Order(20,"2026-07-03 14:30:15.123456",50, "hadera", 5)
-        add_order(order)
-        order = Order(21,"2026-08-03 20:30:15.123456",50, "hadera", 5)
-        add_order(order)
-        order = Order(22,"2026-07-03 20:30:15.123456",50, "hadera", 5)
-        add_order(order)
+        # ==========================================================
+        # CASE 1: Empty Database
+        # ==========================================================
+        print("\nTesting Case 1: Empty Database...")
+        empty_res = get_customers_spent_max_avg_amount_money()
+        print(f"Result (Expected []): {empty_res}")
 
-        customer = Customer(10,"itamar1", 20,"0584706025")
-        add_customer(customer)
-        customer = Customer(11,"itamar2", 20,"0584706025")
-        add_customer(customer)
-        customer = Customer(12,"itamar3", 20,"0584706025")
-        add_customer(customer)
+        # ==========================================================
+        # CASE 2: Single Winner
+        # ==========================================================
+        print("\nTesting Case 2: Single Winner...")
 
-        customer_placed_order(10,20)
-        customer_placed_order(11,21)
-        customer_placed_order(12,22)
-        did_customer_order_top_rated_dishes(10)
+        # Add Customers
+        c1 = Customer(1, "Alice Smith", 25, "0541234567")
+        c2 = Customer(2, "Bob Jones", 30, "0529876543")
+        add_customer(c1)
+        add_customer(c2)
 
-        dish = Dish(20, "itamar", 15, True)
-        add_dish(dish)
-        dish = Dish(30, "itamar", 10, True)
-        add_dish(dish)
-        dish = Dish(40, "itamar", 10, True)
-        add_dish(dish)
+        # Add Dishes (Needed for OrderView to compute a bill)
+        d1 = Dish(10, "Pizza Margherita", 50.0, True)
+        add_dish(d1)
 
-        order_contains_dish(20,20,15)
-        order_contains_dish(21, 30, 10)
-        order_contains_dish(22, 40, 10)
+        # Alice's Orders
+        # Order 101: bill = (2 * 50) = 100 | delivery = 15 | tip = 10 -> Total = 125
+        o101 = Order(101, "2026-07-07 12:00:00", 15.0, "Haifa 1", 10.0)
+        # Order 102: bill = (1 * 50) = 50  | delivery = 10 | tip = 5  -> Total = 65
+        o102 = Order(102, "2026-07-07 13:00:00", 10.0, "Haifa 2", 5.0)
+        add_order(o101)
+        add_order(o102)
+        customer_placed_order(1, 101)
+        customer_placed_order(1, 102)
+        order_contains_dish(101, 10, 2)
+        order_contains_dish(102, 10, 1)
+        # Alice's Average: (125 + 65) / 2 = 95.0
 
-        #order_contains_dish(22, 30, 3)
-        #get_most_profitable_dish_in_period("2020-07-03 16:30:15.123456","2029-07-03 22:30:15.123456" )
+        # Bob's Order
+        # Order 103: bill = (3 * 50) = 150 | delivery = 20 | tip = 20 -> Total = 190
+        o103 = Order(103, "2026-07-07 14:00:00", 20.0, "Haifa 3", 20.0)
+        add_order(o103)
+        customer_placed_order(2, 103)
+        order_contains_dish(103, 10, 3)
+        # Bob's Average: 190.0 / 1 = 190.0
 
-        update_dish_price(20,100)
+        single_winner_res = get_customers_spent_max_avg_amount_money()
+        # Depending on how your DBConnector unwraps rows, it will return the record dictionary/list format.
+        # Expecting Bob (cust_id: 2) to be the sole top spender.
+        print(f"Result (Expected Winner: Customer 2): {single_winner_res}")
 
-        order_contains_dish(21, 20, 5)
-        print(get_cumulative_profit_per_month(2026))
+        # ==========================================================
+        # CASE 3: Tie-Breaker Condition (Sorted Ascending by ID)
+        # ==========================================================
+        print("\nTesting Case 3: Tie Scenario...")
 
+        # Let's boost Alice's average up to 190.0 to match Bob.
+        # She currently has a total spending of 190.0 across 2 orders.
+        # If she submits a 3rd order with a total price of 380.0:
+        # (190.0 + 380.0) / 3 = 190.0 average!
+        # Order 104: bill = (6 * 50) = 300 | delivery = 50 | tip = 30 -> Total = 380
+        o104 = Order(104, "2026-07-07 15:00:00", 50.0, "Haifa 4", 30.0)
+        add_order(o104)
+        customer_placed_order(1, 104)
+        order_contains_dish(104, 10, 6)
+
+        tie_res = get_customers_spent_max_avg_amount_money()
+        # Both Alice (1) and Bob (2) are tied at an average of 190.0.
+        # Output should contain both, sorted by customer ID ascending (1 first, then 2).
+        print(f"Result (Expected Tied Winners [1, 2]): {tie_res}")
+
+    except Exception as e:
+        print(f"An unexpected error occurred during testing: {e}")
     finally:
+        print("\n--- Cleaning up and tearing down tables ---")
         clear_tables()
         drop_tables()
